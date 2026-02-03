@@ -1,0 +1,27 @@
+{
+  "name": "calorie-logger-cloud-run",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "PORT=3000 LOG_PRETTY=1 tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "deploy": "gcloud run deploy calorie-logger --source . --region europe-west1 --platform managed --allow-unauthenticated --set-secrets AUTH_TOKEN=CALORIE_AUTH_TOKEN:latest",
+    "logs:tail": "gcloud run services logs tail calorie-logger --region europe-west1",
+    "logs:recent": "sh -c 'gcloud logging read \"resource.type=cloud_run_revision AND resource.labels.service_name=\\\"calorie-logger\\\"\" --freshness=${LOG_MINUTES:-10}m --limit=200 --format=\"value(textPayload)\"'"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^7.11.0",
+    "fastify": "^4.26.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "pino-pretty": "^10.3.1",
+    "tsx": "^4.7.1",
+    "typescript": "^5.6.3",
+    "vitest": "^1.3.1"
+  }
+}

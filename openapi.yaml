@@ -1,0 +1,250 @@
+openapi: 3.1.0
+info:
+  title: Calorie Logger Cloud Run API
+  version: 1.0.0
+servers:
+  - url: https://calorie-logger-993257220664.europe-west1.run.app
+security:
+  - ApiKeyAuth: []
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /summary:
+    get:
+      operationId: getDailyTotal
+      summary: Get total calories for a date
+      parameters:
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            example: 2026-02-03
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailySummary"
+  /list:
+    get:
+      operationId: listDailyEntries
+      summary: List entries for a date
+      parameters:
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            example: 2026-02-03
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            example: 50
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyList"
+  /log:
+    post:
+      operationId: logEntry
+      summary: Log a new entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogResponse"
+  /update:
+    post:
+      operationId: updateEntry
+      summary: Update an entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModifyResponse"
+  /delete:
+    post:
+      operationId: deleteEntry
+      summary: Delete an entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModifyResponse"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Auth-Token
+  schemas:
+    LogItem:
+      type: object
+      properties:
+        name:
+          type: string
+        quantity:
+          type: string
+        calories:
+          type: number
+        confidence:
+          type: number
+      required: [name, calories]
+    LogRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          example: 2026-02-03
+        meal_type:
+          type: string
+          enum: [breakfast, lunch, dinner, snacks]
+        source:
+          type: string
+        raw_text:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LogItem"
+      required: [date, meal_type, items]
+    UpdateRequest:
+      type: object
+      properties:
+        entry_id:
+          type: string
+        updates:
+          type: object
+          properties:
+            date:
+              type: string
+            meal_type:
+              type: string
+              enum: [breakfast, lunch, dinner, snacks]
+            item:
+              type: string
+            quantity:
+              type: string
+            calories:
+              type: number
+            confidence:
+              type: number
+            source:
+              type: string
+            raw_text:
+              type: string
+      required: [entry_id, updates]
+    DeleteRequest:
+      type: object
+      properties:
+        entry_id:
+          type: string
+      required: [entry_id]
+    LogResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        date:
+          type: string
+        total_calories:
+          type: number
+        entry_ids:
+          type: array
+          items:
+            type: string
+      required: [ok, date, total_calories, entry_ids]
+    ModifyResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        entry_id:
+          type: string
+        date:
+          type: string
+        total_calories:
+          type: number
+      required: [ok, entry_id, date, total_calories]
+    DailySummary:
+      type: object
+      properties:
+        date:
+          type: string
+        total_calories:
+          type: number
+      required: [date, total_calories]
+    DailyList:
+      type: object
+      properties:
+        date:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              entry_id:
+                type: string
+              timestamp:
+                type: string
+              date:
+                type: string
+              meal_type:
+                type: string
+              item:
+                type: string
+              quantity:
+                type: string
+              calories:
+                type: number
+              confidence:
+                type: number
+              source:
+                type: string
+              raw_text:
+                type: string
+            required: [entry_id, timestamp, date, meal_type, item, calories]
+      required: [date, entries]
