@@ -66,6 +66,88 @@ describe("server", () => {
     expect(listRes.json().entries.length).toBe(1);
   });
 
+  it("returns summary range with empty days", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/log",
+      headers: { "x-auth-token": AUTH },
+      payload: {
+        date: "2026-02-03",
+        meal_type: "breakfast",
+        items: [{ name: "Banana", calories: 105 }]
+      }
+    });
+
+    const rangeRes = await app.inject({
+      method: "GET",
+      url: "/summary-range?start=2026-02-02&end=2026-02-04&include_empty=true",
+      headers: { "x-auth-token": AUTH }
+    });
+
+    expect(rangeRes.statusCode).toBe(200);
+    const body = rangeRes.json();
+    expect(body.totals.length).toBe(3);
+    const day = body.totals.find((item: { date: string }) => item.date === "2026-02-03");
+    expect(day.total_calories).toBe(105);
+  });
+
+  it("returns summary range grouped by meal type", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/log",
+      headers: { "x-auth-token": AUTH },
+      payload: {
+        date: "2026-02-03",
+        meal_type: "lunch",
+        items: [{ name: "Sandwich", calories: 300 }]
+      }
+    });
+
+    const rangeRes = await app.inject({
+      method: "GET",
+      url: "/summary-range?start=2026-02-03&end=2026-02-03&group=meal_type",
+      headers: { "x-auth-token": AUTH }
+    });
+
+    expect(rangeRes.statusCode).toBe(200);
+    const body = rangeRes.json();
+    expect(body.group).toBe("meal_type");
+    expect(body.totals[0].totals.lunch).toBe(300);
+  });
+
+  it("lists entries in a range", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/log",
+      headers: { "x-auth-token": AUTH },
+      payload: {
+        date: "2026-02-01",
+        meal_type: "breakfast",
+        items: [{ name: "Toast", calories: 200 }]
+      }
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/log",
+      headers: { "x-auth-token": AUTH },
+      payload: {
+        date: "2026-02-03",
+        meal_type: "dinner",
+        items: [{ name: "Soup", calories: 150 }]
+      }
+    });
+
+    const rangeRes = await app.inject({
+      method: "GET",
+      url: "/entries-range?start=2026-02-01&end=2026-02-03&limit=10&offset=0",
+      headers: { "x-auth-token": AUTH }
+    });
+
+    expect(rangeRes.statusCode).toBe(200);
+    expect(rangeRes.json().entries.length).toBe(2);
+  });
+
   it("updates an entry and totals", async () => {
     const logRes = await app.inject({
       method: "POST",

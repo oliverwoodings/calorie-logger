@@ -23,8 +23,10 @@ export interface StorageAdapter {
   updateEntry(entryId: string, updates: Partial<EntryInput> & { date: string; meal_type: string }): Promise<void>;
   deleteEntry(entryId: string): Promise<Entry | null>;
   listEntries(date: string, limit: number, offset: number): Promise<Entry[]>;
+  listEntriesRange(start: string, end: string, limit: number, offset: number): Promise<Entry[]>;
   incrementTotal(date: string, delta: number): Promise<void>;
   getTotal(date: string): Promise<number>;
+  getTotalsRange(start: string, end: string): Promise<Array<{ date: string; total_calories: number }>>;
 }
 
 export function createFirestoreStorage(entriesCollection: string, totalsCollection: string): StorageAdapter {
@@ -73,6 +75,22 @@ export function createFirestoreStorage(entriesCollection: string, totalsCollecti
       const snapshot = await query.get();
       return snapshot.docs.map((doc) => doc.data() as Entry);
     },
+    async listEntriesRange(start, end, limit, offset) {
+      let query = db
+        .collection(entriesCollection)
+        .where("date", ">=", start)
+        .where("date", "<=", end)
+        .orderBy("date", "asc")
+        .orderBy("timestamp", "desc");
+      if (offset > 0) {
+        query = query.offset(offset);
+      }
+      if (limit > 0) {
+        query = query.limit(limit);
+      }
+      const snapshot = await query.get();
+      return snapshot.docs.map((doc) => doc.data() as Entry);
+    },
     async incrementTotal(date, delta) {
       const ref = db.collection(totalsCollection).doc(date);
       await ref.set({ date, total_calories: FieldValue.increment(delta) }, { merge: true });
@@ -80,6 +98,18 @@ export function createFirestoreStorage(entriesCollection: string, totalsCollecti
     async getTotal(date) {
       const doc = await db.collection(totalsCollection).doc(date).get();
       return doc.exists ? numberOrZero(doc.data()?.total_calories) : 0;
+    },
+    async getTotalsRange(start, end) {
+      const snapshot = await db
+        .collection(totalsCollection)
+        .where("date", ">=", start)
+        .where("date", "<=", end)
+        .orderBy("date", "asc")
+        .get();
+      return snapshot.docs.map((doc) => ({
+        date: String(doc.data().date || doc.id),
+        total_calories: numberOrZero(doc.data().total_calories)
+      }));
     }
   };
 }
@@ -128,12 +158,30 @@ export function createMemoryStorage(): StorageAdapter {
         .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       return all.slice(offset, offset + limit);
     },
+    async listEntriesRange(start, end, limit, offset) {
+      const all = Array.from(entries.values())
+        .filter((entry) => entry.date >= start && entry.date <= end)
+        .sort((a, b) => {
+          if (a.date === b.date) {
+            return b.timestamp.localeCompare(a.timestamp);
+          }
+          return a.date.localeCompare(b.date);
+        });
+      return all.slice(offset, offset + limit);
+    },
     async incrementTotal(date, delta) {
       const current = totals.get(date) || 0;
       totals.set(date, numberOrZero(current + delta));
     },
     async getTotal(date) {
       return numberOrZero(totals.get(date) || 0);
+    },
+    async getTotalsRange(start, end) {
+      const items = Array.from(totals.entries())
+        .filter(([date]) => date >= start && date <= end)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, total]) => ({ date, total_calories: numberOrZero(total) }));
+      return items;
     }
   };
 }

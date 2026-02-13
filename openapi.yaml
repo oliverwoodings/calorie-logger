@@ -32,6 +32,77 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DailySummary"
+  /summary-range:
+    get:
+      operationId: getSummaryRange
+      summary: Get daily totals for a date range
+      parameters:
+        - in: query
+          name: start
+          required: true
+          schema:
+            type: string
+            example: 2026-02-01
+        - in: query
+          name: end
+          required: true
+          schema:
+            type: string
+            example: 2026-02-07
+        - in: query
+          name: include_empty
+          required: false
+          schema:
+            type: boolean
+        - in: query
+          name: group
+          required: false
+          schema:
+            type: string
+            enum: [meal_type]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/SummaryRange"
+                  - $ref: "#/components/schemas/SummaryRangeByMeal"
+  /summary-last:
+    get:
+      operationId: getSummaryLast
+      summary: Get daily totals for the last N days
+      parameters:
+        - in: query
+          name: days
+          required: false
+          schema:
+            type: integer
+            example: 7
+        - in: query
+          name: include_empty
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SummaryRange"
+  /time:
+    get:
+      operationId: getCurrentDateTime
+      summary: Get current date and time
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeResponse"
   /list:
     get:
       operationId: listDailyEntries
@@ -62,6 +133,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DailyList"
+  /entries-range:
+    get:
+      operationId: listEntriesRange
+      summary: List entries for a date range
+      parameters:
+        - in: query
+          name: start
+          required: true
+          schema:
+            type: string
+            example: 2026-02-01
+        - in: query
+          name: end
+          required: true
+          schema:
+            type: string
+            example: 2026-02-07
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            example: 200
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntriesRange"
   /log:
     post:
       operationId: logEntry
@@ -248,3 +355,86 @@ components:
                 type: string
             required: [entry_id, timestamp, date, meal_type, item, calories]
       required: [date, entries]
+    SummaryRange:
+      type: object
+      properties:
+        start:
+          type: string
+        end:
+          type: string
+        totals:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailySummary"
+      required: [start, end, totals]
+    SummaryRangeByMeal:
+      type: object
+      properties:
+        start:
+          type: string
+        end:
+          type: string
+        group:
+          type: string
+        totals:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              totals:
+                type: object
+                properties:
+                  breakfast:
+                    type: number
+                  lunch:
+                    type: number
+                  dinner:
+                    type: number
+                  snacks:
+                    type: number
+                required: [breakfast, lunch, dinner, snacks]
+            required: [date, totals]
+      required: [start, end, totals]
+    EntriesRange:
+      type: object
+      properties:
+        start:
+          type: string
+        end:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              entry_id:
+                type: string
+              timestamp:
+                type: string
+              date:
+                type: string
+              meal_type:
+                type: string
+              item:
+                type: string
+              quantity:
+                type: string
+              calories:
+                type: number
+              confidence:
+                type: number
+              source:
+                type: string
+              raw_text:
+                type: string
+            required: [entry_id, timestamp, date, meal_type, item, calories]
+      required: [start, end, entries]
+    TimeResponse:
+      type: object
+      properties:
+        datetime:
+          type: string
+          format: date-time
+      required: [datetime]

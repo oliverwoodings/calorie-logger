@@ -47,6 +47,8 @@ export function buildServer(options: ServerOptions) {
 
   app.get("/health", async () => ({ ok: true }));
 
+  app.get("/time", async () => ({ datetime: new Date().toISOString() }));
+
   app.get("/summary", async (request, reply) => {
     const auth = authCheck(request.headers as Record<string, string | undefined>);
     if (!auth.ok) {
@@ -58,6 +60,89 @@ export function buildServer(options: ServerOptions) {
       const date = normalizeDate(requireField(query, "date"));
       const total = await options.storage.getTotal(date);
       return reply.send({ date, total_calories: total });
+    } catch (err) {
+      return reply.status(400).send({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/summary-range", async (request, reply) => {
+    const auth = authCheck(request.headers as Record<string, string | undefined>);
+    if (!auth.ok) {
+      return reply.status(401).send(auth);
+    }
+
+    try {
+      const query = request.query as Record<string, string | undefined>;
+      const start = normalizeDate(requireField(query, "start"));
+      const end = normalizeDate(requireField(query, "end"));
+      const includeEmpty = String(query.include_empty || "").toLowerCase() === "true";
+      const group = String(query.group || "").toLowerCase();
+
+      if (group === "meal_type") {
+        const entries = await options.storage.listEntriesRange(start, end, 10000, 0);
+        const totalsByDate: Record<string, Record<string, number>> = {};
+        for (const entry of entries) {
+          const dateKey = entry.date;
+          if (!totalsByDate[dateKey]) {
+            totalsByDate[dateKey] = { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 };
+          }
+          const meal = String(entry.meal_type || "");
+          if (meal in totalsByDate[dateKey]) {
+            totalsByDate[dateKey][meal] = numberOrZero(totalsByDate[dateKey][meal] + numberOrZero(entry.calories));
+          }
+        }
+
+        const dates = includeEmpty ? enumerateDates_(start, end) : Object.keys(totalsByDate).sort();
+        const totals = dates.map((date) => ({
+          date,
+          totals: totalsByDate[date] || { breakfast: 0, lunch: 0, dinner: 0, snacks: 0 }
+        }));
+        return reply.send({ start, end, totals, group: "meal_type" });
+      }
+
+      const totals = await options.storage.getTotalsRange(start, end);
+      if (includeEmpty) {
+        const map = new Map(totals.map((item) => [item.date, item.total_calories]));
+        const filled = enumerateDates_(start, end).map((date) => ({
+          date,
+          total_calories: map.get(date) || 0
+        }));
+        return reply.send({ start, end, totals: filled });
+      }
+
+      return reply.send({ start, end, totals });
+    } catch (err) {
+      return reply.status(400).send({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/summary-last", async (request, reply) => {
+    const auth = authCheck(request.headers as Record<string, string | undefined>);
+    if (!auth.ok) {
+      return reply.status(401).send(auth);
+    }
+
+    try {
+      const query = request.query as Record<string, string | undefined>;
+      const days = Number(query.days || 7);
+      if (!Number.isFinite(days) || days <= 0) {
+        throw new Error("days must be a positive number");
+      }
+      const includeEmpty = String(query.include_empty || "").toLowerCase() === "true";
+
+      const end = formatLocalDate_(new Date());
+      const start = formatLocalDate_(addDays_(new Date(), -(days - 1)));
+      const totals = await options.storage.getTotalsRange(start, end);
+      if (includeEmpty) {
+        const map = new Map(totals.map((item) => [item.date, item.total_calories]));
+        const filled = enumerateDates_(start, end).map((date) => ({
+          date,
+          total_calories: map.get(date) || 0
+        }));
+        return reply.send({ start, end, totals: filled });
+      }
+
+      return reply.send({ start, end, totals });
     } catch (err) {
       return reply.status(400).send({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
@@ -77,6 +162,25 @@ export function buildServer(options: ServerOptions) {
 
       const entries = await options.storage.listEntries(date, limit, offset);
       return reply.send({ date, entries });
+    } catch (err) {
+      return reply.status(400).send({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/entries-range", async (request, reply) => {
+    const auth = authCheck(request.headers as Record<string, string | undefined>);
+    if (!auth.ok) {
+      return reply.status(401).send(auth);
+    }
+
+    try {
+      const query = request.query as Record<string, string | undefined>;
+      const start = normalizeDate(requireField(query, "start"));
+      const end = normalizeDate(requireField(query, "end"));
+      const limit = Number(query.limit || 100);
+      const offset = Number(query.offset || 0);
+      const entries = await options.storage.listEntriesRange(start, end, limit, offset);
+      return reply.send({ start, end, entries });
     } catch (err) {
       return reply.status(400).send({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
@@ -195,4 +299,41 @@ export function buildServer(options: ServerOptions) {
   });
 
   return app;
+}
+
+function enumerateDates_(start: string, end: string): string[] {
+  const startDate = toDate_(start);
+  const endDate = toDate_(end);
+  if (startDate > endDate) {
+    throw new Error("start must be before end");
+  }
+
+  const dates: string[] = [];
+  const current = new Date(startDate.getTime());
+  while (current <= endDate) {
+    dates.push(formatLocalDate_(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
+function toDate_(value: string): Date {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Invalid date format. Use YYYY-MM-DD");
+  }
+  return date;
+}
+
+function formatLocalDate_(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays_(value: Date, days: number): Date {
+  const date = new Date(value.getTime());
+  date.setDate(date.getDate() + days);
+  return date;
 }
